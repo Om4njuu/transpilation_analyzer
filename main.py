@@ -1,27 +1,29 @@
-"""Pipeline runner for the Quantum Transpilation & Noise Analyzer."""
+#pipeline runner for the Quantum Transpilation & Noise Analyzer
 
 from qiskit.providers.fake_provider import GenericBackendV2
-from qiskit_aer.noise import NoiseModel
-from src.benchmarks import build_qft_circuit, build_ghz_circuit
+from src.benchmarks import build_ghz_circuit, build_qft_circuit
 from src.analyzer import TranspilationAnalyzer
-from src.evaluator import NoiseEvaluator
+from src.visualizer import plot_transpilation_results
 
 def main():
-    #setup target hardware layout (Fake 7-qubit backend with coupling map)
     target_backend = GenericBackendV2(num_qubits=7, seed=42)
-    
-    # instantiate analyzer with target backend
     analyzer = TranspilationAnalyzer(target_backend=target_backend)
     
-    #generate benchmark circuits
     ghz = build_ghz_circuit(num_qubits=5)
     qft = build_qft_circuit(num_qubits=5)
     
+    df_ghz = analyzer.benchmark_circuit(ghz)
+    df_qft = analyzer.benchmark_circuit(qft)
+    
     print("=== Transpilation Metrics ===")
-    for circ in [ghz, qft]:
-        df = analyzer.benchmark_circuit(circ)
-        print(f"\nResults for {circ.name}:")
-        print(df.to_string(index=False))
+    print(f"\nResults for {ghz.name}:")
+    print(df_ghz.to_string(index=False))
+    
+    print(f"\nResults for {qft.name}:")
+    print(df_qft.to_string(index=False))
+
+    # Generate and save metrics plot
+    plot_transpilation_results(df_ghz, df_qft)
 
 if __name__ == "__main__":
     main()
