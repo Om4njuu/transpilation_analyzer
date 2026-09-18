@@ -20,3 +20,5 @@ qiskit-ibm-runtime>=0.20.0
 pandas>=2.0.0
 numpy>=1.23.0
 matplotlib>=3.7.0
+Flask>=3.0.0
+pytest>=8.0.0

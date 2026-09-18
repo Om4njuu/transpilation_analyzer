@@ -105,6 +105,33 @@ HTML_PAGE = """
         border-radius: 14px;
         overflow: hidden;
       }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .summary-card {
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel-alt);
+      }
+      .summary-label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-bottom: 6px;
+      }
+      .summary-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+      }
+      .run-context {
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -130,6 +157,7 @@ HTML_PAGE = """
       .status.visible { display: block; }
       @media (max-width: 780px) {
         .grid, .row { grid-template-columns: 1fr; }
+        .summary-grid { grid-template-columns: repeat(2, 1fr); }
         .header { flex-direction: column; align-items: flex-start; }
       }
     </style>
@@ -169,19 +197,38 @@ HTML_PAGE = """
 
         <section class="panel">
           <h2>Performance summary</h2>
-          <div class="muted">Optimization levels 0 through 3 compare circuit depth and 2-qubit gate counts.</div>
+          <div id="runContext" class="run-context">Run a benchmark to see the circuit and backend details.</div>
+          <div class="summary-grid">
+            <div class="summary-card">
+              <span class="summary-label">Best level</span>
+              <span id="bestLevel" class="summary-value">-</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Best depth</span>
+              <span id="bestDepth" class="summary-value">-</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">Total gates</span>
+              <span id="bestTotal" class="summary-value">-</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">2Q gates</span>
+              <span id="bestTwoQ" class="summary-value">-</span>
+            </div>
+          </div>
           <div class="result-box">
             <table>
               <thead>
                 <tr>
                   <th>Level</th>
                   <th>Depth</th>
+                  <th>Total gates</th>
                   <th>2Q Gates</th>
-                  <th>SWAP</th>
+                  <th>SWAP gates</th>
                 </tr>
               </thead>
               <tbody id="resultsBody">
-                <tr><td colspan="4" class="muted">No data generated yet.</td></tr>
+                <tr><td colspan="5" class="muted">No data generated yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -193,16 +240,28 @@ HTML_PAGE = """
       const runBtn = document.getElementById('runBtn');
       const status = document.getElementById('status');
       const resultsBody = document.getElementById('resultsBody');
+      const runContext = document.getElementById('runContext');
+      const bestLevel = document.getElementById('bestLevel');
+      const bestDepth = document.getElementById('bestDepth');
+      const bestTotal = document.getElementById('bestTotal');
+      const bestTwoQ = document.getElementById('bestTwoQ');
 
-      const renderResults = (results) => {
+      const renderResults = (data) => {
+        const results = data.results;
         resultsBody.innerHTML = results.map(r => `
           <tr>
             <td>${r.optimization_level}</td>
             <td>${r.depth}</td>
+            <td>${r.total_gates}</td>
             <td>${r.two_qubit_gates}</td>
             <td>${r.swap_gates}</td>
           </tr>
         `).join('');
+        runContext.textContent = `${data.circuit_name} | ${data.qubits} circuit qubits | ${data.backend_qubits}-qubit backend | Source gates: ${data.source_total_gates}`;
+        bestLevel.textContent = data.summary.best_optimization_level;
+        bestDepth.textContent = data.summary.best_depth;
+        bestTotal.textContent = data.summary.best_total_gates;
+        bestTwoQ.textContent = data.summary.best_two_qubit_gates;
       };
 
       runBtn.addEventListener('click', async () => {
@@ -225,7 +284,7 @@ HTML_PAGE = """
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Request failed');
 
-          renderResults(data.results);
+          renderResults(data);
           status.textContent = `${data.benchmark} benchmark completed for ${data.qubits} qubits.`;
           status.classList.add('visible');
         } catch (error) {
@@ -237,7 +296,6 @@ HTML_PAGE = """
   </body>
 </html>
 """
-
 
 def _build_benchmark(name: str, num_qubits: int):
     if name == 'ghz':
@@ -271,10 +329,27 @@ def analyze():
         df = analyzer.benchmark_circuit(circuit)
 
         results = df.to_dict(orient='records')
+        best_result = min(
+          results,
+          key=lambda result: (
+            result['depth'],
+            result['total_gates'],
+            result['two_qubit_gates'],
+          ),
+        )
         return jsonify({
             'benchmark': benchmark,
+          'circuit_name': circuit.name,
             'qubits': qubits,
             'results': results,
+          'backend_qubits': backend_qubits,
+          'source_total_gates': sum(circuit.count_ops().values()),
+          'summary': {
+            'best_optimization_level': best_result['optimization_level'],
+            'best_depth': best_result['depth'],
+            'best_total_gates': best_result['total_gates'],
+            'best_two_qubit_gates': best_result['two_qubit_gates'],
+          },
         })
     except Exception as exc:  # pragma: no cover - defensive error handling
         return jsonify({'error': str(exc)}), 500
